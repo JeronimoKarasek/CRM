@@ -1,0 +1,10 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: dark; }
+body { @apply bg-neutral-950 text-neutral-100; }
+a { @apply text-neutral-100; }
+input, select { @apply bg-neutral-900 border border-neutral-800 rounded p-2; }
+button { @apply bg-white text-black rounded px-3 py-2 font-medium; }
+table { @apply text-sm; }
