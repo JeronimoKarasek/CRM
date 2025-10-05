@@ -1,6 +1,5 @@
-// app/api/me/route.ts
-export const runtime = 'nodejs'           // garante Node (não Edge)
-export const dynamic = 'force-dynamic'    // evita cache
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
 
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
