@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { createBrowserClient } from '@/lib/supabase/client'
+import { createBrowserClient } from '../../lib/supabase/client'
 
 export default function ConfiguracoesPage() {
   const supabase = createBrowserClient()

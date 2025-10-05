@@ -1,19 +1,10 @@
-import { cookies, headers } from 'next/headers'
-import { createServerClient as createClient } from '@supabase/auth-helpers-nextjs'
-import type { NextRequest, NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
+import { createServerComponentClient } from '@supabase/auth-helpers-nextjs'
 
-export function createServerClient(ctx?: { req: NextRequest, res: NextResponse }) {
-  const cookieStore = cookies()
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          if (ctx) return ctx.req.cookies.get(name)?.value
-          return cookieStore.get(name)?.value
-        },
-      },
-    },
-  )
+export function createServerClient() {
+  return createServerComponentClient({
+    cookies,
+    supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    supabaseKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  })
 }

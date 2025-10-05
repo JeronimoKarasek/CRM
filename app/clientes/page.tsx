@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
-import { createBrowserClient } from '@/lib/supabase/client'
+import { createBrowserClient } from '../../lib/supabase/client'
 import { ColumnDef, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table'
 
 interface FarolRow {
@@ -24,12 +24,12 @@ export default function ClientesPage() {
 
   useEffect(() => {
     const load = async () => {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('farol_view')
         .select('id,nome,telefone,cpf,status,saldo,pago,horario_da_ultima_resposta,instancia,banco_simulado,uf,cidade')
         .order('horario_da_ultima_resposta', { ascending: false })
         .limit(50)
-      if (!error && data) setRows(data as any)
+      if (data) setRows(data as any)
     }
     load()
   }, [])
