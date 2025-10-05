@@ -9,7 +9,7 @@ type Profile = {
   nome: string | null
   telefone: string | null
   role: 'superadmin' | 'gestor' | 'admin' | 'cliente'
-  org: string
+  org: string | null
   default_table: string | null
   allowed_tables: string[] | null
   is_active: boolean
@@ -19,47 +19,59 @@ type Profile = {
 export default function ConfiguracoesPage() {
   const supabase = createBrowserClient()
   const [me, setMe] = useState<Profile | null>(null)
-  const [users, setUsers] = useState<Profile[]>([])
   const [loading, setLoading] = useState(true)
-  const [msg, setMsg] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
 
-  // form novo usuário
+  // lista de usuários (só para superadmin)
+  const [users, setUsers] = useState<Profile[]>([])
+  const [msg, setMsg] = useState<string | null>(null)
+
+  // form criar usuário
   const [email, setEmail] = useState('')
   const [nome, setNome] = useState('')
   const [telefone, setTelefone] = useState('')
   const [role, setRole] = useState<'superadmin'|'gestor'|'admin'|'cliente'>('cliente')
   const [tableName, setTableName] = useState('Farol')
-  const [org, setOrg] = useState('') // valor que deve bater com Farol."cliente"
+  const [org, setOrg] = useState('')
 
   const loadMe = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-    const { data } = await supabase.from('profiles').select('*').eq('user_id', user.id).single()
-    setMe(data as any)
+    setLoading(true); setErr(null)
+    // 1) tenta via RLS normal
+    const { data: { user }, error: uerr } = await supabase.auth.getUser()
+    if (uerr) { setErr(uerr.message); setLoading(false); return }
+    if (!user) { setErr('Usuário não autenticado'); setLoading(false); return }
+
+    const { data, error } = await supabase.from('profiles').select('*').eq('user_id', user.id).single()
+
+    if (error || !data) {
+      // 2) fallback via Service Role (server-side)
+      try {
+        const r = await fetch('/api/me', { cache: 'no-store' })
+        const j = await r.json()
+        if (!r.ok || !j.ok) throw new Error(j.error || 'Falha no /api/me')
+        setMe(j.data as Profile)
+      } catch (e: any) {
+        setErr(String(e.message || e))
+      }
+    } else {
+      setMe(data as any)
+    }
+    setLoading(false)
   }
 
   const loadUsers = async () => {
-    setLoading(true)
-    setErr(null)
-    // superadmin consegue listar todos os perfis (policy: profiles_superadmin_read)
+    if (!me || me.role !== 'superadmin') return
+    // superadmin lista todos (policy já cobre)
     const { data, error } = await supabase
       .from('profiles')
       .select('user_id,email,nome,telefone,role,org,default_table,allowed_tables,is_active,created_at')
       .order('created_at', { ascending: false })
       .limit(500)
-    if (error) setErr(error.message)
-    setUsers((data || []) as any)
-    setLoading(false)
+    if (!error) setUsers((data || []) as any)
   }
 
-  useEffect(() => {
-    (async () => {
-      await loadMe()
-      await loadUsers()
-    })()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  useEffect(() => { (async () => { await loadMe() })() }, [])
+  useEffect(() => { (async () => { await loadUsers() })() }, [me?.role])
 
   const createUser = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -75,35 +87,34 @@ export default function ConfiguracoesPage() {
       setMsg('Usuário convidado com sucesso. Ele receberá um e-mail para criar a senha.')
       setEmail(''); setNome(''); setTelefone(''); setRole('cliente'); setOrg('')
       await loadUsers()
-    } catch (e: any) {
-      setErr(String(e.message || e))
-    }
+    } catch (e: any) { setErr(String(e.message || e)) }
   }
 
   const toggleActive = async (u: Profile) => {
     setMsg(null); setErr(null)
     const { error } = await supabase.from('profiles').update({ is_active: !u.is_active }).eq('user_id', u.user_id)
-    if (error) { setErr(error.message) } else { setMsg('Atualizado.'); await loadUsers() }
+    if (error) setErr(error.message); else { setMsg('Atualizado.'); await loadUsers() }
   }
-
-  const isSuper = me?.role === 'superadmin'
 
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-semibold">Configurações</h1>
 
-      {/* Meu perfil */}
       <div className="space-y-2">
         <h2 className="text-lg font-medium">Meu perfil</h2>
-        {me ? (
+        {err && <div className="text-red-400 text-sm">Erro: {err}</div>}
+        {loading ? (
+          <div>Carregando…</div>
+        ) : me ? (
           <pre className="bg-neutral-900 p-4 rounded border border-neutral-800 text-xs overflow-auto">
             {JSON.stringify(me, null, 2)}
           </pre>
-        ) : <div>Carregando…</div>}
+        ) : (
+          <div className="text-neutral-400 text-sm">Perfil não encontrado.</div>
+        )}
       </div>
 
-      {/* Admin de usuários */}
-      {isSuper ? (
+      {me?.role === 'superadmin' ? (
         <div className="space-y-4">
           <h2 className="text-lg font-medium">Usuários</h2>
 
@@ -119,16 +130,12 @@ export default function ConfiguracoesPage() {
             </select>
             <select value={tableName} onChange={e=>setTableName(e.target.value)}>
               <option value="Farol">Farol</option>
-              {/* quando tiver outras tabelas, adicione aqui */}
             </select>
             <input placeholder='Filtro inicial "cliente" (ex.: foco01) *' value={org} onChange={e=>setOrg(e.target.value)} required />
             <div className="md:col-span-6 flex justify-end">
               <button type="submit">Criar usuário</button>
             </div>
           </form>
-
-          {msg && <div className="text-green-400 text-sm">{msg}</div>}
-          {err && <div className="text-red-400 text-sm">{err}</div>}
 
           <div className="overflow-x-auto border border-neutral-800 rounded">
             <table className="min-w-full text-sm">
@@ -144,9 +151,7 @@ export default function ConfiguracoesPage() {
                 </tr>
               </thead>
               <tbody>
-                {loading ? (
-                  <tr><td className="px-3 py-2" colSpan={7}>Carregando…</td></tr>
-                ) : users.map(u => (
+                {users.map(u => (
                   <tr key={u.user_id} className="odd:bg-neutral-950 even:bg-neutral-900">
                     <td className="px-3 py-2">{u.email}</td>
                     <td className="px-3 py-2">{u.nome}</td>
