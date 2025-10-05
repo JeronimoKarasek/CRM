@@ -24,6 +24,8 @@ interface FarolRow {
   cidade: string | null
 }
 
+const PAGE_SIZE = 50
+
 export default function ClientesPage() {
   const supabase = createBrowserClient()
   const [rows, setRows] = useState<FarolRow[]>([])
@@ -40,19 +42,12 @@ export default function ClientesPage() {
   const [dataDe, setDataDe] = useState('')
   const [dataAte, setDataAte] = useState('')
 
-  const fetchData = async () => {
-    setLoading(true)
-    setErrorMsg(null)
+  // paginação
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
-    let query = supabase
-      .from('farol_view')
-      .select(
-        'id,nome,telefone,cpf,status,saldo,pago,horario_da_ultima_resposta,instancia,banco_simulado,uf,cidade'
-      )
-      .order('horario_da_ultima_resposta', { ascending: false })
-      .limit(50)
-
-    // contém (ILIKE) — aplica em múltiplas colunas
+  const applyFilters = (query: any) => {
     if (q.trim()) {
       const like = `%${q.trim()}%`
       query = query.or(
@@ -68,18 +63,49 @@ export default function ClientesPage() {
         ].join(',')
       )
     }
-
     if (status) query = query.eq('status', status)
     if (uf) query = query.eq('uf', uf)
     if (cidade) query = query.ilike('cidade', `%${cidade}%`)
     if (instancia) query = query.ilike('instancia', `%${instancia}%`)
     if (banco) query = query.ilike('banco_simulado', `%${banco}%`)
-
-    // range por data (horario_da_ultima_resposta)
     if (dataDe) query = query.gte('horario_da_ultima_resposta', dataDe)
     if (dataAte) query = query.lte('horario_da_ultima_resposta', dataAte)
+    return query
+  }
 
-    const { data, error } = await query
+  const fetchData = async () => {
+    setLoading(true)
+    setErrorMsg(null)
+
+    // 1) count (com os mesmos filtros)
+    const countQuery = applyFilters(
+      supabase.from('farol_view').select('id', { count: 'exact', head: true })
+    )
+    const { count, error: countErr } = await countQuery
+    if (countErr) {
+      console.error('count farol_view ->', countErr)
+      setErrorMsg(countErr.message)
+      setRows([])
+      setTotal(0)
+      setLoading(false)
+      return
+    }
+    setTotal(count || 0)
+
+    // 2) página de dados
+    const from = (page - 1) * PAGE_SIZE
+    const to = from + PAGE_SIZE - 1
+    let dataQuery = applyFilters(
+      supabase
+        .from('farol_view')
+        .select(
+          'id,nome,telefone,cpf,status,saldo,pago,horario_da_ultima_resposta,instancia,banco_simulado,uf,cidade'
+        )
+        .order('horario_da_ultima_resposta', { ascending: false })
+        .range(from, to)
+    )
+
+    const { data, error } = await dataQuery
 
     if (error) {
       console.error('farol_view ->', error)
@@ -96,10 +122,17 @@ export default function ClientesPage() {
     setLoading(false)
   }
 
+  // primeira carga (sem filtros = mostrar todos paginados)
   useEffect(() => {
     fetchData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [page])
+
+  const applyAndGoFirstPage = () => {
+    setPage(1)
+    // fetch ocorrerá via useEffect por causa da mudança de page
+    setTimeout(fetchData, 0)
+  }
 
   const columns = useMemo<ColumnDef<FarolRow>[]>(() => [
     { accessorKey: 'nome', header: 'Nome' },
@@ -142,9 +175,9 @@ export default function ClientesPage() {
         <input placeholder="Cidade" value={cidade} onChange={e=>setCidade(e.target.value)} />
         <input placeholder="Instância" value={instancia} onChange={e=>setInstancia(e.target.value)} />
         <input placeholder="Banco simulado" value={banco} onChange={e=>setBanco(e.target.value)} />
-        <input type="date" placeholder="De" value={dataDe} onChange={e=>setDataDe(e.target.value)} />
-        <input type="date" placeholder="Até" value={dataAte} onChange={e=>setDataAte(e.target.value)} />
-        <button onClick={fetchData}>Aplicar filtros</button>
+        <input type="date" value={dataDe} onChange={e=>setDataDe(e.target.value)} />
+        <input type="date" value={dataAte} onChange={e=>setDataAte(e.target.value)} />
+        <button onClick={applyAndGoFirstPage}>Aplicar filtros</button>
       </div>
 
       {loading ? (
@@ -181,6 +214,18 @@ export default function ClientesPage() {
           </table>
         </div>
       )}
+
+      {/* Paginação */}
+      <div className="flex items-center justify-between text-sm text-neutral-300">
+        <div>
+          Total: <b>{total.toLocaleString('pt-BR')}</b> •
+          Página <b>{page}</b> de <b>{totalPages}</b>
+        </div>
+        <div className="space-x-2">
+          <button disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p-1))}>← Anterior</button>
+          <button disabled={page >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p+1))}>Próxima →</button>
+        </div>
+      </div>
 
       {errorMsg && (
         <p className="text-red-400 text-sm mt-2">Erro ao carregar: {errorMsg}</p>
