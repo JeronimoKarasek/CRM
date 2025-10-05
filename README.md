@@ -12,5 +12,7 @@
 ## Para fazer o push para o vercel
 
 git add .
-git commit -m 
+git commit -m "fix(api): correct route.ts paths and names"
 git push
+
+

@@ -19,72 +19,101 @@ type Profile = {
   created_at: string
 }
 
+type TableOpt = { table_name: string; display_name: string }
+
 export default function ConfiguracoesPage() {
   const supabase = createBrowserClient()
 
+  // estado geral
   const [me, setMe] = useState<Profile | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [err, setErr] = useState<string | null>(null)
+  const [loadingMe, setLoadingMe] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  // lista de usuários (para superadmin)
+  // lista de usuários (apenas quando superadmin)
   const [users, setUsers] = useState<Profile[]>([])
   const [loadingUsers, setLoadingUsers] = useState(false)
-  const [msg, setMsg] = useState<string | null>(null)
 
-  // opções e formulário de criação
+  // opções do formulário
+  const [tableOptions, setTableOptions] = useState<TableOpt[]>([])
   const [clienteOptions, setClienteOptions] = useState<string[]>([])
+
+  // formulário de criação
   const [email, setEmail] = useState('')
   const [nome, setNome] = useState('')
   const [telefone, setTelefone] = useState('')
   const [role, setRole] = useState<Role>('cliente')
-  const [defaultTable, setDefaultTable] = useState('Farol')
+  const [defaultTable, setDefaultTable] = useState<string>('Farol')
   const [allowedTables, setAllowedTables] = useState<string[]>(['Farol'])
   const [orgs, setOrgs] = useState<string[]>([])
+  const [msg, setMsg] = useState<string | null>(null)
 
-  /** Faz parse seguro de JSON (evita erro do tipo “Unexpected token '<'…”) */
+  // util: parse seguro de JSON (evita erro quando vem HTML)
   const safeParseJson = async (r: Response) => {
     const ct = r.headers.get('content-type') || ''
     if (!ct.includes('application/json')) {
-      const txt = await r.text()
-      throw new Error(`API /api/me não retornou JSON (status ${r.status}): ${txt.slice(0, 120)}`)
+      const t = await r.text()
+      throw new Error(`API ${r.url} não retornou JSON (status ${r.status}): ${t.slice(0, 120)}`)
     }
     return r.json()
   }
 
-  /** Carrega meu perfil: 1) RLS, 2) fallback Service Role */
+  // 1) carrega meu perfil (tenta RLS, depois fallback Service Role)
   const loadMe = async () => {
-    setLoading(true)
-    setErr(null)
+    setLoadingMe(true)
+    setError(null)
     try {
       const { data: { user }, error: uerr } = await supabase.auth.getUser()
       if (uerr) throw new Error(uerr.message)
       if (!user) throw new Error('Usuário não autenticado')
 
-      // tenta via RLS
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('user_id', user.id)
-        .single()
-
+      const { data, error } = await supabase.from('profiles').select('*').eq('user_id', user.id).single()
       if (error || !data) {
-        // fallback via Service Role (server)
         const r = await fetch('/api/me', { cache: 'no-store' })
         const j = await safeParseJson(r)
-        if (!r.ok || !j.ok) throw new Error(j.error || 'Falha ao obter perfil via /api/me')
+        if (!r.ok || !j.ok) throw new Error(j.error || 'Falha no /api/me')
         setMe(j.data as Profile)
       } else {
         setMe(data as Profile)
       }
     } catch (e: any) {
-      setErr(String(e.message || e))
+      setError(String(e.message || e))
       setMe(null)
     } finally {
-      setLoading(false)
+      setLoadingMe(false)
     }
   }
 
-  /** Lista perfis (somente se eu for superadmin) */
+  // 2) carrega opções de TABELAS (whitelist do CRM)
+  const loadTableOptions = async () => {
+    try {
+      const { data, error } = await supabase.rpc('rpc_list_crm_tables')
+      if (error) throw error
+      const opts = (data || []) as TableOpt[]
+      setTableOptions(opts)
+      // se não tiver default no form, escolhe o primeiro habilitado
+      if (opts.length && !defaultTable) {
+        setDefaultTable(opts[0].table_name)
+        setAllowedTables([opts[0].table_name])
+      }
+    } catch (e: any) {
+      console.error('rpc_list_crm_tables ->', e?.message || e)
+    }
+  }
+
+  // 3) carrega opções de CLIENTES da tabela padrão
+  const loadClienteOptions = async (tbl?: string) => {
+    try {
+      const table = tbl || defaultTable || 'Farol'
+      const { data, error } = await supabase.rpc('rpc_distinct_clientes_for', { _table: table })
+      if (error) throw error
+      setClienteOptions((data || []).map((d: any) => d.cliente))
+    } catch (e: any) {
+      console.error('rpc_distinct_clientes_for ->', e?.message || e)
+      setClienteOptions([])
+    }
+  }
+
+  // 4) lista de usuários (para superadmin)
   const loadUsers = async () => {
     if (!me || me.role !== 'superadmin') return
     setLoadingUsers(true)
@@ -97,44 +126,33 @@ export default function ConfiguracoesPage() {
       if (error) throw error
       setUsers((data || []) as any)
     } catch (e: any) {
-      setErr(String(e.message || e))
+      setError(String(e.message || e))
     } finally {
       setLoadingUsers(false)
     }
   }
 
-  /** Carrega as opções de cliente (distinct) para o select múltiplo */
-  const loadClienteOptions = async () => {
-    try {
-      const { data, error } = await supabase.rpc('rpc_distinct_clientes')
-      if (error) throw error
-      setClienteOptions((data || []).map((d: any) => d.cliente))
-    } catch (e: any) {
-      // não é crítico; só mostraremos menos opções
-      console.error('rpc_distinct_clientes ->', e?.message || e)
-    }
-  }
-
+  // efeitos
+  useEffect(() => { (async () => { await loadMe() })() }, [])
   useEffect(() => {
     (async () => {
-      await loadMe()
-    })()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  useEffect(() => {
-    (async () => {
-      if (me) {
-        await Promise.all([loadUsers(), loadClienteOptions()])
-      }
+      if (!me) return
+      await loadTableOptions()
+      await loadClienteOptions(defaultTable)
+      await loadUsers()
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me?.role])
 
-  /** Cria usuário via API server (usa Service Role no backend) */
+  useEffect(() => { (async () => {
+    if (!me) return
+    await loadClienteOptions(defaultTable)
+  })() }, [defaultTable]) // quando troca a tabela padrão, recarrega clientes
+
+  // criar usuário
   const createUser = async (e: React.FormEvent) => {
     e.preventDefault()
-    setMsg(null); setErr(null)
+    setMsg(null); setError(null)
     try {
       const res = await fetch('/api/admin/create-user', {
         method: 'POST',
@@ -142,36 +160,35 @@ export default function ConfiguracoesPage() {
         body: JSON.stringify({
           email, nome, telefone,
           role,
-          orgs,                      // multi-clientes
-          allowedTables,             // multi-tabelas
+          orgs,               // multi-clientes
+          allowedTables,      // multi-tabelas
           defaultTable,
-        }),
+        })
       })
-      const j = await res.json()
+      const j = await safeParseJson(res)
       if (!res.ok || !j.ok) throw new Error(j.error || 'Falha ao criar usuário')
-      setMsg('Usuário convidado com sucesso. Ele receberá e-mail para criar a senha.')
+      setMsg('Usuário convidado com sucesso. Ele receberá um e-mail para criar a senha.')
       // limpa formulário
       setEmail(''); setNome(''); setTelefone('')
-      setRole('cliente'); setDefaultTable('Farol'); setAllowedTables(['Farol']); setOrgs([])
+      setRole('cliente'); setDefaultTable(tableOptions[0]?.table_name || 'Farol')
+      setAllowedTables([tableOptions[0]?.table_name || 'Farol'])
+      setOrgs([])
       await loadUsers()
     } catch (e: any) {
-      setErr(String(e.message || e))
+      setError(String(e.message || e))
     }
   }
 
-  /** Alterna ativo/inativo */
+  // ativar/desativar
   const toggleActive = async (u: Profile) => {
-    setMsg(null); setErr(null)
+    setMsg(null); setError(null)
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ is_active: !u.is_active })
-        .eq('user_id', u.user_id)
+      const { error } = await supabase.from('profiles').update({ is_active: !u.is_active }).eq('user_id', u.user_id)
       if (error) throw error
       setMsg('Atualizado.')
       await loadUsers()
     } catch (e: any) {
-      setErr(String(e.message || e))
+      setError(String(e.message || e))
     }
   }
 
@@ -186,13 +203,13 @@ export default function ConfiguracoesPage() {
           <button onClick={loadMe}>Recarregar</button>
         </div>
 
-        {err && (
+        {error && (
           <div className="text-red-400 text-sm">
-            Erro: {err}
+            Erro: {error}
           </div>
         )}
 
-        {loading ? (
+        {loadingMe ? (
           <div>Carregando…</div>
         ) : me ? (
           <pre className="bg-neutral-900 p-4 rounded border border-neutral-800 text-xs overflow-auto">
@@ -203,7 +220,7 @@ export default function ConfiguracoesPage() {
         )}
       </div>
 
-      {/* Mostra aviso somente quando já carregou e eu NÃO sou superadmin */}
+      {/* aviso só quando já carregou e NÃO é superadmin */}
       {me && me.role !== 'superadmin' && (
         <div className="text-yellow-400 text-sm">
           Somente <b>superadmin</b> pode gerenciar usuários.
@@ -247,39 +264,50 @@ export default function ConfiguracoesPage() {
               </select>
             </div>
 
+            {/* Tabela padrão (dinâmico) */}
             <div>
               <label className="block text-xs text-neutral-400 mb-1">Tabela padrão</label>
-              <select value={defaultTable} onChange={(e) => setDefaultTable(e.target.value)}>
-                <option value="Farol">Farol</option>
-                {/* adicione aqui novas tabelas quando existir */}
+              <select
+                value={defaultTable}
+                onChange={(e) => setDefaultTable(e.target.value)}
+              >
+                {tableOptions.length === 0 ? (
+                  <option value="Farol">Farol</option>
+                ) : tableOptions.map(t => (
+                  <option key={t.table_name} value={t.table_name}>{t.display_name}</option>
+                ))}
               </select>
             </div>
 
+            {/* Tabelas permitidas (múltiplo, dinâmico) */}
             <div className="md:col-span-3">
               <label className="block text-xs text-neutral-400 mb-1">Tabelas permitidas (múltiplo)</label>
               <select
                 multiple
                 value={allowedTables}
                 onChange={(e) => {
-                  const vals = Array.from(e.target.selectedOptions).map((o) => o.value)
+                  const vals = Array.from(e.target.selectedOptions).map(o => o.value)
                   setAllowedTables(vals)
                 }}
                 className="w-full h-24"
               >
-                <option value="Farol">Farol</option>
+                {tableOptions.length === 0 ? (
+                  <option value="Farol">Farol</option>
+                ) : tableOptions.map(t => (
+                  <option key={t.table_name} value={t.table_name}>{t.display_name}</option>
+                ))}
               </select>
-              <p className="text-xs text-neutral-500 mt-1">
-                Segure Ctrl (Windows) ou Cmd (Mac) para selecionar múltiplos.
-              </p>
+              <p className="text-xs text-neutral-500 mt-1">Segure Ctrl (Windows) ou Cmd (Mac) para selecionar múltiplos.</p>
             </div>
 
+            {/* Clientes da tabela padrão (múltiplo) */}
             <div className="md:col-span-3">
               <label className="block text-xs text-neutral-400 mb-1">Clientes (múltiplo)</label>
               <select
                 multiple
                 value={orgs}
                 onChange={(e) => {
-                  const vals = Array.from(e.target.selectedOptions).map((o) => o.value)
+                  const vals = Array.from(e.target.selectedOptions).map(o => o.value)
                   setOrgs(vals)
                 }}
                 className="w-full h-40"
@@ -299,7 +327,7 @@ export default function ConfiguracoesPage() {
           </form>
 
           {msg && <div className="text-green-400 text-sm">{msg}</div>}
-          {err && <div className="text-red-400 text-sm">{err}</div>}
+          {error && <div className="text-red-400 text-sm">{error}</div>}
 
           {/* Lista de usuários */}
           <div className="overflow-x-auto border border-neutral-800 rounded">
