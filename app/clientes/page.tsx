@@ -47,31 +47,77 @@ export default function ClientesPage() {
   const [total, setTotal] = useState(0)
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
-  const applyFilters = (query: any) => {
-    if (q.trim()) {
-      const like = `%${q.trim()}%`
-      query = query.or(
-        [
-          `nome.ilike.${like}`,
-          `cpf.ilike.${like}`,
-          `telefone.ilike.${like}`,
-          `status.ilike.${like}`,
-          `cidade.ilike.${like}`,
-          `uf.ilike.${like}`,
-          `instancia.ilike.${like}`,
-          `banco_simulado.ilike.${like}`,
-        ].join(',')
-      )
-    }
-    if (status) query = query.eq('status', status)
-    if (uf) query = query.eq('uf', uf)
-    if (cidade) query = query.ilike('cidade', `%${cidade}%`)
-    if (instancia) query = query.ilike('instancia', `%${instancia}%`)
-    if (banco) query = query.ilike('banco_simulado', `%${banco}%`)
-    if (dataDe) query = query.gte('horario_da_ultima_resposta', dataDe)
-    if (dataAte) query = query.lte('horario_da_ultima_resposta', dataAte)
-    return query
+ const applyFilters = (query: any) => {
+  if (q.trim()) {
+    const like = `%${q.trim()}%`
+    query = query.or(
+      [
+        `nome.ilike.${like}`,
+        `cpf.ilike.${like}`,
+        `telefone.ilike.${like}`,
+        `status.ilike.${like}`,
+        `cidade.ilike.${like}`,
+        `uf.ilike.${like}`,
+        `instancia.ilike.${like}`,
+        `banco_simulado.ilike.${like}`,
+      ].join(',')
+    )
   }
+  if (status) query = query.eq('status', status)
+  if (uf) query = query.eq('uf', uf)
+  if (cidade) query = query.ilike('cidade', `%${cidade}%`)
+  if (instancia) query = query.ilike('instancia', `%${instancia}%`)
+  if (banco) query = query.ilike('banco_simulado', `%${banco}%`)
+  if (dataDe) query = query.gte('horario_da_ultima_resposta', dataDe)
+  if (dataAte) query = query.lte('horario_da_ultima_resposta', dataAte)
+  return query
+}
+
+// exportar CSV respeitando os filtros atuais (todas as linhas)
+const exportCsv = async () => {
+  setErrorMsg(null)
+  let query = applyFilters(
+    supabase
+      .from('farol_view')
+      .select('id,nome,telefone,cpf,status,saldo,pago,horario_da_ultima_resposta,instancia,banco_simulado,uf,cidade')
+  )
+
+  const { data, error } = await query.limit(100000) // limite alto para cobrir seus ~68k
+  if (error) { setErrorMsg(error.message); return }
+
+  const rows = (data || []).map((r:any) => ({
+    ID: r.id,
+    Nome: r.nome,
+    CPF: r.cpf,
+    Telefone: r.telefone,
+    Status: r.status,
+    Saldo: r.saldo,
+    Pago: r.pago,
+    Ultima_Resposta: r.horario_da_ultima_resposta,
+    Instancia: r.instancia,
+    Banco_Simulado: r.banco_simulado,
+    UF: r.uf,
+    Cidade: r.cidade,
+  }))
+
+  const headers = Object.keys(rows[0] || { })
+  const csv = [
+    headers.join(';'),
+    ...rows.map((row:any) => headers.map(h => {
+      const v = row[h] ?? ''
+      const s = String(v).replace(/;/g, ',').replace(/\r?\n/g, ' ')
+      return `"${s}"`
+    }).join(';'))
+  ].join('\r\n')
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `clientes_filtrado_${new Date().toISOString().slice(0,10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
 
   const fetchData = async () => {
     setLoading(true)
@@ -169,16 +215,27 @@ export default function ClientesPage() {
 
       {/* Filtros */}
       <div className="grid grid-cols-1 md:grid-cols-6 gap-2">
-        <input placeholder="Buscar (nome, cpf, tel, status...)" value={q} onChange={e=>setQ(e.target.value)} />
-        <input placeholder="Status" value={status} onChange={e=>setStatus(e.target.value)} />
-        <input placeholder="UF" value={uf} onChange={e=>setUf(e.target.value)} />
-        <input placeholder="Cidade" value={cidade} onChange={e=>setCidade(e.target.value)} />
-        <input placeholder="Instância" value={instancia} onChange={e=>setInstancia(e.target.value)} />
-        <input placeholder="Banco simulado" value={banco} onChange={e=>setBanco(e.target.value)} />
-        <input type="date" value={dataDe} onChange={e=>setDataDe(e.target.value)} />
-        <input type="date" value={dataAte} onChange={e=>setDataAte(e.target.value)} />
-        <button onClick={applyAndGoFirstPage}>Aplicar filtros</button>
-      </div>
+  <input placeholder="Buscar (nome, cpf, tel, status...)" value={q} onChange={e=>setQ(e.target.value)} />
+  <input placeholder="Status" value={status} onChange={e=>setStatus(e.target.value)} />
+  <input placeholder="UF" value={uf} onChange={e=>setUf(e.target.value)} />
+  <input placeholder="Cidade" value={cidade} onChange={e=>setCidade(e.target.value)} />
+  <input placeholder="Instância" value={instancia} onChange={e=>setInstancia(e.target.value)} />
+  <input placeholder="Banco simulado" value={banco} onChange={e=>setBanco(e.target.value)} />
+
+  <div>
+    <div className="text-xs mb-1 text-neutral-400">De (Última Resposta)</div>
+    <input type="date" value={dataDe} onChange={e=>setDataDe(e.target.value)} />
+  </div>
+  <div>
+    <div className="text-xs mb-1 text-neutral-400">Até (Última Resposta)</div>
+    <input type="date" value={dataAte} onChange={e=>setDataAte(e.target.value)} />
+  </div>
+
+  <div className="md:col-span-2 flex items-end gap-2">
+    <button onClick={applyAndGoFirstPage}>Aplicar filtros</button>
+    <button onClick={exportCsv}>Exportar Excel (CSV)</button>
+  </div>
+</div>
 
       {loading ? (
         <div className="h-48 rounded bg-neutral-800 animate-pulse" />
