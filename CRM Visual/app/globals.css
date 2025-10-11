@@ -1,0 +1,212 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Tema claro */
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --sidebar: #f1f5f9;
+  --sidebar-foreground: #0f172a;
+  --sidebar-hover: #e2e8f0;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --border: #e2e8f0;
+  --input: #ffffff;
+  --input-foreground: #0f172a;
+  --accent: #0ea5e9;
+}
+
+[data-theme='dark'] {
+  /* Tema escuro */
+  --background: #0f172a;
+  --foreground: #f8fafc;
+  --sidebar: #1e293b;
+  --sidebar-foreground: #f8fafc;
+  --sidebar-hover: #334155;
+  --card: #1e293b;
+  --card-foreground: #f8fafc;
+  --border: #334155;
+  --input: #1e293b;
+  --input-foreground: #f8fafc;
+  --accent: #38bdf8;
+}
+
+/* Design futurista e limpo */
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 100%);
+  color: #e2e8f0;
+  min-height: 100vh;
+}
+
+/* Scrollbar personalizada */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(15, 15, 35, 0.3);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.5);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.7);
+}
+
+/* Animações suaves */
+* {
+  transition: all 0.2s ease-in-out;
+}
+
+/* Cards com efeito glass */
+.glass-effect {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Botões futuristas */
+.btn-futuristic {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  color: white;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.btn-futuristic:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+}
+
+.btn-futuristic:before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s;
+}
+
+.btn-futuristic:hover:before {
+  left: 100%;
+}
+
+/* Inputs futuristas */
+input, select, textarea {
+  background: rgba(15, 15, 35, 0.8) !important;
+  border: 1px solid rgba(100, 116, 139, 0.3) !important;
+  color: #e2e8f0 !important;
+  border-radius: 8px !important;
+  transition: all 0.3s ease !important;
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: #667eea !important;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1) !important;
+  outline: none !important;
+}
+
+/* Tabelas futuristas */
+table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+table th {
+  background: rgba(15, 15, 35, 0.9);
+  color: #94a3b8;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+}
+
+table td {
+  background: rgba(15, 15, 35, 0.5);
+}
+
+table tr:hover td {
+  background: rgba(102, 126, 234, 0.1);
+}
+
+/* Sidebar futurista */
+.sidebar {
+  background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
+  border-right: 1px solid rgba(100, 116, 139, 0.2);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+/* Cards com gradiente */
+.gradient-card {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+  border: 1px solid rgba(102, 126, 234, 0.2);
+}
+
+/* Efeitos de hover para cards */
+.hover-lift {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.hover-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+}
+
+/* Glow effect para elementos importantes */
+.glow {
+  box-shadow: 0 0 20px rgba(102, 126, 234, 0.3);
+}
+
+/* Loading animation */
+.loading {
+  position: relative;
+  overflow: hidden;
+}
+
+.loading::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+  animation: loading 1.5s infinite;
+}
+
+@keyframes loading {
+  0% { left: -100%; }
+  100% { left: 100%; }
+}
+
+/* Responsividade */
+@media (max-width: 768px) {
+  .ml-64 {
+    margin-left: 0 !important;
+  }
+  
+  .w-64 {
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+  }
+  
+  .w-64.open {
+    transform: translateX(0);
+  }
+}
